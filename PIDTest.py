@@ -2,10 +2,13 @@ import HVACModSim.Controls.PID as PID
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 from time import sleep
 
 from math import exp
+
+
 
 def T_room(t : float,
            Vdot : float,
@@ -47,6 +50,8 @@ def clg_af_setpoint(output: float,
 
 def main():
 
+
+
     # environmental parameters
     cv = 0.1714         # BTU/lbm-F
     V = 10 * 20 * 8     # ft^3
@@ -59,13 +64,15 @@ def main():
     t = 10              # min
 
     SP = 70
-    deadband = 0
-    Kp = 5
-    ti = 10
-    td = 0
+    deadband = 1
+    Kp = 10
+    ti = 1
+    td = 0.001
 
     time = 300          # min
     pv = np.zeros(len(range(0,time)))
+    err = np.zeros(len(range(0,time)))
+    airflow = np.zeros(len(range(0,time)))
     output = np.zeros(len(pv))
 
     pi = PID.PID(Kp = Kp, ti = ti, td = td, SP = SP, deadband = deadband, action = "direct")
@@ -75,21 +82,52 @@ def main():
 
     for t in range(0,len(pv)):
 
-        pv[t] = T_room(t, Vdot, V, T0, Tsa, Qdot_min)
+        e = np.random.normal(0, np.sqrt(0.25 * Qdot_min))
+
+        pv[t] = T_room(t, Vdot, V, T0, Tsa, Qdot_min + e)
+        err[t] = SP - pv[t]
         output[t] = pi.output(pv[t])
 
         Vdot = clg_af_setpoint(output[t], Vdot_min, Vdot_max)
+        airflow[t] = Vdot
+
 
         print(f"Temperature: {pv[t]}")
         print(f"Airflow: {Vdot}")
         print(f"Error: {pi.error(pv[t])}")
         print(f"output: {output[t]} \n")
 
-        #sleep(np.random.uniform(1,2))
         sleep(0.5)
 
-    plt.plot(pv)
+    MSE = np.sum( (SP - pv) **2 ) / len(pv)
+    
+    print(f"min PV: {np.min(pv[10:])}")
+    print(f"max PV: {np.max(pv[10:])}")
+    print(f"MSE: {MSE}")
+    print(f"Avg PV: {np.mean(pv)}")
+
+    sns.set_style("darkgrid")
+    fig, ax = plt.subplots(layout='constrained')
+    ax2 = ax.twinx()
+
+    ax.plot(pv, label='process variable', color='b')
+    # ax.plot(err, label='error', color='r')
+
+    ax.set_ylabel("Temperature (deg F)")
+
+
+    ax2.set_ylabel("Output (%)")
+
+    ax2.plot(output, label='output', color='g')
+
+
+    ax.axhline( SP + deadband/2, color='black' )
+    ax.axhline( SP - deadband/2, color='black')
+    ax2.set(ylim=(50,90))
+    ax.legend(loc='upper right')
+    ax2.legend(loc='lower right')
     plt.show()
+
 
 if __name__ == "__main__":
     main()
